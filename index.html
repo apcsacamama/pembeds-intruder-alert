@@ -186,5 +186,112 @@
         </table>
     </div>
 
+    <script>
+        const WS_URL = 'ws://localhost:3000';
+        let ws;
+
+        // Initialize WebSocket connection
+        function connectWebSocket() {
+            ws = new WebSocket(WS_URL);
+
+            ws.onopen = () => {
+                console.log('Connected to server');
+                document.querySelector('.status-dot').style.backgroundColor = 'var(--accent-green)';
+            };
+
+            ws.onmessage = (event) => {
+                const message = JSON.parse(event.data);
+                
+                if (message.type === 'init') {
+                    updateDashboard(message.data);
+                    updateLogs(message.data.logs);
+                } else if (message.type === 'update') {
+                    updateDashboard(message.data);
+                    if (message.data.latestLog) {
+                        addLogEntry(message.data.latestLog);
+                    }
+                }
+            };
+
+            ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+            };
+
+            ws.onclose = () => {
+                console.log('Disconnected from server');
+                document.querySelector('.status-dot').style.backgroundColor = 'var(--accent-red)';
+                // Attempt to reconnect after 3 seconds
+                setTimeout(connectWebSocket, 3000);
+            };
+        }
+
+        // Update dashboard values
+        function updateDashboard(data) {
+            if (data.currentDistance !== undefined) {
+                document.getElementById('current-distance').textContent = data.currentDistance + ' cm';
+            }
+            if (data.incidentCount !== undefined) {
+                document.getElementById('incident-count').textContent = data.incidentCount;
+            }
+        }
+
+        // Update entire logs table
+        function updateLogs(logs) {
+            const tbody = document.getElementById('log-body');
+            tbody.innerHTML = '';
+            logs.forEach(log => {
+                addLogEntry(log, true);
+            });
+        }
+
+        // Add a single log entry
+        function addLogEntry(log, append = false) {
+            const tbody = document.getElementById('log-body');
+            const row = document.createElement('tr');
+            
+            const statusCell = log.status === 'INTRUDER' 
+                ? `<span class="alert-badge">INTRUDER</span>`
+                : `<span style="color: #94a3b8;">Safe</span>`;
+            
+            row.innerHTML = `
+                <td>${log.timestamp}</td>
+                <td>${log.distance} cm</td>
+                <td>${statusCell}</td>
+            `;
+            
+            if (append) {
+                tbody.appendChild(row);
+            } else {
+                tbody.insertBefore(row, tbody.firstChild);
+            }
+
+            // Keep only last 20 rows visible
+            while (tbody.children.length > 20) {
+                tbody.removeChild(tbody.lastChild);
+            }
+        }
+
+        // Fetch initial data via REST API (fallback)
+        async function fetchInitialData() {
+            try {
+                const statusRes = await fetch('http://localhost:3000/api/status');
+                const statusData = await statusRes.json();
+                updateDashboard(statusData);
+
+                const logsRes = await fetch('http://localhost:3000/api/logs?limit=20');
+                const logsData = await logsRes.json();
+                updateLogs(logsData);
+            } catch (error) {
+                console.error('Error fetching initial data:', error);
+            }
+        }
+
+        // Initialize connection when page loads
+        window.addEventListener('load', () => {
+            connectWebSocket();
+            fetchInitialData();
+        });
+    </script>
+
 </body>
 </html>
